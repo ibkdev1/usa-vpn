@@ -24,7 +24,9 @@ jobs:
           status=$(curl -fsS --max-time 20 --retry 2 https://vpn.fopstech.com/v1/status)
           echo "$status"
           online=$(echo "$status" | jq .servers_online)
+          total=$(echo "$status" | jq .servers)
           [ "$online" -ge 1 ] || { echo "::error::No VPN server is online"; exit 1; }
+          [ "$online" -eq "$total" ] || { echo "::error::Only $online of $total VPN servers are online"; exit 1; }
       - name: VPN port reachable
         run: |
           # WireGuard doesn't answer unknown packets, so check the host answers on HTTPS instead.
