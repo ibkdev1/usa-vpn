@@ -1,0 +1,37 @@
+# Checks USA VPN every 15 minutes. A failed run means something is down;
+# GitHub emails the repository owner about failed scheduled runs.
+name: Uptime
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Website and API
+        run: |
+          for url in https://vpn.fopstech.com/healthz https://vpn.fopstech.com/ https://vpn.fopstech.com/privacy; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 --retry 2 "$url")
+            echo "$url -> $code"
+            [ "$code" = 200 ] || { echo "::error::$url returned $code"; exit 1; }
+          done
+      - name: VPN servers online
+        run: |
+          status=$(curl -fsS --max-time 20 --retry 2 https://vpn.fopstech.com/v1/status)
+          echo "$status"
+          online=$(echo "$status" | jq .servers_online)
+          [ "$online" -ge 1 ] || { echo "::error::No VPN server is online"; exit 1; }
+      - name: VPN port reachable
+        run: |
+          # WireGuard doesn't answer unknown packets, so check the host answers on HTTPS instead.
+          curl -fsS --max-time 20 -o /dev/null https://129-158-43-251.sslip.io/healthz
+      - name: Certificate valid for 14+ days
+        run: |
+          end=$(echo | openssl s_client -connect vpn.fopstech.com:443 -servername vpn.fopstech.com 2>/dev/null | openssl x509 -noout -enddate | cut -d= -f2)
+          days=$(( ( $(date -d "$end" +%s) - $(date +%s) ) / 86400 ))
+          echo "certificate expires in $days days"
+          [ "$days" -ge 14 ] || { echo "::error::certificate expires in $days days"; exit 1; }
